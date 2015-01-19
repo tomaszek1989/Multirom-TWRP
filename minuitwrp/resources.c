@@ -59,29 +59,22 @@ static int open_png(const char* name, png_structp* png_ptr, png_infop* info_ptr,
     unsigned char header[8];
     int result = 0;
 
-    snprintf(resPath, sizeof(resPath)-1, "/res/images/%s.png", name);
-    resPath[sizeof(resPath)-1] = '\0';
+#ifdef TW_HAS_LANDSCAPE
+    if(gr_get_rotation()%180 != 0)
+        snprintf(resPath, sizeof(resPath), "/res/landscape/images/%s.png", name);
+    else
+#endif
+    {
+        snprintf(resPath, sizeof(resPath), "/res/images/%s.png", name);
+    }
+
     FILE* fp = fopen(resPath, "rb");
     if (fp == NULL) {
-#ifndef TW_HAS_LANDSCAPE
         fp = fopen(name, "rb");
         if (fp == NULL) {
             result = -1;
             goto exit;
         }
-#else
-        char resPath[256];
-        if(gr_get_rotation()%180 == 0)
-            snprintf(resPath, "%s", name);
-        else
-            snprintf(resPath, sizeof(resPath)-1, "/res/landscape/images/%s.png", name);
-        resPath[sizeof(resPath)-1] = '\0';
-        fp = fopen(resPath, "rb");
-        if (fp == NULL && (gr_get_rotation()%180 == 0 || !(fp = fopen(name, "rb"))) {
-            result = -1;
-            goto exit;
-        }
-#endif
     }
 
     size_t bytesRead = fread(header, 1, sizeof(header), fp);
