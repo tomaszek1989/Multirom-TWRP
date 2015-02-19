@@ -1,5 +1,5 @@
 /*
-	Copyright 2012 bigbiff/Dees_Troy TeamWin
+	Copyright 2014 TeamWin
 	This file is part of TWRP/TeamWin Recovery Project.
 
 	TWRP is free software: you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #include <string>
 #include <list>
 #include "twrpDU.hpp"
+#include "tw_atomic.hpp"
 
 #define MAX_FSTAB_LINE_LENGTH 2048
 
@@ -62,7 +63,7 @@ public:
 	bool Can_Repair();                                                        // Checks to see if we have everything needed to be able to repair the current file system
 	uint64_t Get_Max_FileSize();					  	  //get partition maxFileSie
 	bool Repair();                                                            // Repairs the current file system
-	bool Backup(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size); // Backs up the partition to the folder specified
+	bool Backup(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size, pid_t &tar_fork_pid); // Backs up the partition to the folder specified
 	bool Check_MD5(string restore_folder);                                    // Checks MD5 of a backup
 	bool Restore(string restore_folder, const unsigned long long *total_restore_size, unsigned long long *already_restored_size); // Restores the partition using the backup folder provided
 	unsigned long long Get_Restore_Size(string restore_folder);               // Returns the overall restore size of the backup
@@ -78,6 +79,7 @@ public:
 	unsigned long long GetSizeFree() { return Free; }
 	unsigned long long GetSizeBackup() { return Backup_Size; }
 	unsigned long long GetSizeTotal() { return Size; }
+	unsigned long long GetSizeRaw() { return Size_Raw; }
 
 public:
 	string Current_File_System;                                               // Current file system
@@ -114,7 +116,7 @@ private:
 	bool Wipe_RMRF();                                                         // Uses rm -rf to wipe
 	bool Wipe_F2FS();                                                         // Uses mkfs.f2fs to wipe
 	bool Wipe_Data_Without_Wiping_Media();                                    // Uses rm -rf to wipe but does not wipe /data/media
-	bool Backup_Tar(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size); // Backs up using tar for file systems
+	bool Backup_Tar(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size, pid_t &tar_fork_pid); // Backs up using tar for file systems
 	bool Backup_DD(string backup_folder);                                     // Backs up using dd for emmc memory types
 	bool Backup_Dump_Image(string backup_folder);                             // Backs up using dump_image for MTD memory types
 	string Get_Restore_File_System(string restore_folder);                    // Returns the file system that was in place at the time of the backup
@@ -148,11 +150,12 @@ private:
 	string Decrypted_Block_Device;                                            // Decrypted block device available after decryption
 	bool Removable;                                                           // Indicates if this partition is removable -- affects how often we check overall size, if present, etc.
 	int Length;                                                               // Used by make_ext4fs to leave free space at the end of the partition block for things like a crypto footer
-	unsigned long long Size;                                                  // Overall size of the partition
+	unsigned long long Size;                                                  // Overall size of the filesystem on the partition
 	unsigned long long Used;                                                  // Overall used space
 	unsigned long long Free;                                                  // Overall free space
 	unsigned long long Backup_Size;                                           // Backup size -- may be different than used space especially when /data/media is present
 	unsigned long long Restore_Size;                                          // Restore size of the current restore operation
+	unsigned long long Size_Raw;                                              // Total size of the underlaying partition (without fs)
 	bool Can_Be_Encrypted;                                                    // This partition might be encrypted, affects error handling, can only be true if crypto support is compiled in
 	bool Is_Encrypted;                                                        // This partition is thought to be encrypted -- it wouldn't mount for some reason, only avialble with crypto support
 	bool Is_Decrypted;                                                        // This partition has successfully been decrypted
@@ -226,12 +229,14 @@ public:
 	void UnMount_Main_Partitions(void);                                       // Unmounts system and data if not data/media and boot if boot is mountable
 	int Partition_SDCard(void);                                               // Repartitions the sdcard
 	TWPartition *Get_Default_Storage_Partition();                             // Returns a pointer to a default storage partition
+	int Cancel_Backup();                                                      // Signals partition backup to cancel
 
 	int Fix_Permissions();
 	void Get_Partition_List(string ListType, std::vector<PartitionList> *Partition_List);
 	int Fstab_Processed();                                                    // Indicates if the fstab has been processed or not
 	void Output_Storage_Fstab();                                              // Creates a /cache/recovery/storage.fstab file with a list of all potential storage locations for app use
 	bool Enable_MTP();                                                        // Enables MTP
+	void Add_All_MTP_Storage();                                               // Adds all storage objects for MTP
 	bool Disable_MTP();                                                       // Disables MTP
 	bool Add_MTP_Storage(string Mount_Point);                                 // Adds or removes an MTP Storage partition
 	bool Add_MTP_Storage(unsigned int Storage_ID);                            // Adds or removes an MTP Storage partition
@@ -247,6 +252,8 @@ public:
 	bool Pop_Context();
 	bool Has_Extra_Contexts() const { return !Contexts.empty(); }
 
+	TWAtomicInt stop_backup;
+
 private:
 	void Setup_Settings_Storage_Partition(TWPartition* Part);                 // Sets up settings storage
 	void Setup_Android_Secure_Location(TWPartition* Part);                    // Sets up .android_secure if needed
@@ -260,6 +267,7 @@ private:
 	pid_t mtppid;
 	bool mtp_was_enabled;
 	int mtp_write_fd;
+	pid_t tar_fork_pid;
 
 private:
 	std::vector<TWPartition*> Partitions;                                     // Vector list of all partitions

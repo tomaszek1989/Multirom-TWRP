@@ -156,6 +156,7 @@ TWPartition::TWPartition(const string& fstab_line) {
 	MTP_Storage_ID = 0;
 	Can_Flash_Img = false;
 	Is_ImageMount = false;
+	Size_Raw = 0;
 
 	if(!fstab_line.empty())
 		Process_Fstab_Line(fstab_line, true);
@@ -1334,9 +1335,10 @@ bool TWPartition::Repair() {
 	return false;
 }
 
-bool TWPartition::Backup(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size) {
-	if (Backup_Method == FILES)
-		return Backup_Tar(backup_folder, overall_size, other_backups_size);
+bool TWPartition::Backup(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size, pid_t &tar_fork_pid) {
+	if (Backup_Method == FILES) {
+		return Backup_Tar(backup_folder, overall_size, other_backups_size, tar_fork_pid);
+	}
 	else if (Backup_Method == DD)
 		return Backup_DD(backup_folder);
 	else if (Backup_Method == FLASH_UTILS)
@@ -1513,6 +1515,10 @@ void TWPartition::Check_FS_Type() {
 		LOGINFO("Can't probe device %s\n", Actual_Block_Device.c_str());
 		return;
 	}
+
+	blkid_loff_t size = blkid_get_dev_size(blkid_probe_get_fd(pr));
+	if(size > 0)
+		Size_Raw = size;
 
 	if (blkid_probe_lookup_value(pr, "TYPE", &type, NULL) < 0) {
 		blkid_free_probe(pr);
@@ -1733,7 +1739,18 @@ bool TWPartition::Wipe_F2FS() {
 
 		gui_print("Formatting %s using mkfs.f2fs...\n", Display_Name.c_str());
 		Find_Actual_Block_Device();
-		command = "mkfs.f2fs " + Actual_Block_Device;
+		command = "mkfs.f2fs -t 1";
+		if (!Is_Decrypted && Length != 0) {
+			// Only use length if we're not decrypted
+			char len[32];
+			int mod_length = Length;
+			if (Length < 0)
+				mod_length *= -1;
+			sprintf(len, "%i", mod_length);
+			command += " -r ";
+			command += len;
+		}
+		command += " " + Actual_Block_Device;
 		if (TWFunc::Exec_Cmd(command) == 0) {
 			Recreate_AndSec_Folder();
 			gui_print("Done.\n");
@@ -1805,7 +1822,7 @@ bool TWPartition::Wipe_Data_Without_Wiping_Media() {
 #endif // ifdef TW_OEM_BUILD
 }
 
-bool TWPartition::Backup_Tar(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size) {
+bool TWPartition::Backup_Tar(string backup_folder, const unsigned long long *overall_size, const unsigned long long *other_backups_size, pid_t &tar_fork_pid) {
 	char back_name[255], split_index[5];
 	string Full_FileName, Split_FileName, Tar_Args, Command;
 	int use_compression, use_encryption = 0, index, backup_count;
@@ -1847,7 +1864,7 @@ bool TWPartition::Backup_Tar(string backup_folder, const unsigned long long *ove
 	tar.setsize(Backup_Size);
 	tar.partition_name = Backup_Name;
 	tar.backup_folder = backup_folder;
-	if (tar.createTarFork(overall_size, other_backups_size) != 0)
+	if (tar.createTarFork(overall_size, other_backups_size, tar_fork_pid) != 0)
 		return false;
 	return true;
 }
