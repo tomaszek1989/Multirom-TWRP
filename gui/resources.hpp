@@ -3,7 +3,11 @@
 #ifndef _RESOURCE_HEADER
 #define _RESOURCE_HEADER
 
-#include "../minzip/Zip.h"
+#include <string>
+#include <vector>
+#include <map>
+
+struct ZipArchive;
 
 extern "C" {
 #include "../minuitwrp/minui.h"
@@ -17,8 +21,7 @@ public:
 	virtual ~Resource() {}
 
 public:
-	virtual void* GetResource(void) = 0;
-	std::string GetName(void) { return mName; }
+	std::string GetName() { return mName; }
 
 private:
 	std::string mName;
@@ -44,7 +47,8 @@ public:
 	virtual ~FontResource();
 
 public:
-	virtual void* GetResource(void) { return mFont; }
+	void* GetResource() { return this ? mFont : NULL; }
+	int GetHeight() { return gr_getMaxFontHeight(this ? mFont : NULL); }
 
 protected:
 	void* mFont;
@@ -58,7 +62,9 @@ public:
 	virtual ~ImageResource();
 
 public:
-	virtual void* GetResource(void) { return mSurface; }
+	gr_surface GetResource() { return this ? mSurface : NULL; }
+	int GetWidth() { return gr_get_width(this ? mSurface : NULL); }
+	int GetHeight() { return gr_get_height(this ? mSurface : NULL); }
 
 protected:
 	gr_surface mSurface;
@@ -71,9 +77,11 @@ public:
 	virtual ~AnimationResource();
 
 public:
-	virtual void* GetResource(void) { return mSurfaces.empty() ? NULL : mSurfaces.at(0); }
-	virtual void* GetResource(int entry) { return mSurfaces.empty() ? NULL : mSurfaces.at(entry); }
-	virtual int GetResourceCount(void) { return mSurfaces.size(); }
+	gr_surface GetResource() { return (!this || mSurfaces.empty()) ? NULL : mSurfaces.at(0); }
+	gr_surface GetResource(int entry) { return (!this || mSurfaces.empty()) ? NULL : mSurfaces.at(entry); }
+	int GetWidth() { return gr_get_width(this ? GetResource() : NULL); }
+	int GetHeight() { return gr_get_height(this ? GetResource() : NULL); }
+	int GetResourceCount() { return mSurfaces.size(); }
 
 protected:
 	std::vector<gr_surface> mSurfaces;
@@ -82,15 +90,21 @@ protected:
 class ResourceManager
 {
 public:
-	ResourceManager(xml_node<>* resList, ZipArchive* pZip);
+	ResourceManager();
 	virtual ~ResourceManager();
 	void LoadResources(xml_node<>* resList, ZipArchive* pZip);
 
 public:
-	Resource* FindResource(std::string name);
+	FontResource* FindFont(const std::string& name) const;
+	ImageResource* FindImage(const std::string& name) const;
+	AnimationResource* FindAnimation(const std::string& name) const;
+	std::string FindString(const std::string& name) const;
 
 private:
-	std::vector<Resource*> mResources;
+	std::vector<FontResource*> mFonts;
+	std::vector<ImageResource*> mImages;
+	std::vector<AnimationResource*> mAnimations;
+	std::map<std::string, std::string> mStrings;
 };
 
 #endif  // _RESOURCE_HEADER

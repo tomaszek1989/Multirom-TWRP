@@ -28,9 +28,6 @@ extern "C" {
 GUIText::GUIText(xml_node<>* node)
 	: GUIObject(node)
 {
-	xml_attribute<>* attr;
-	xml_node<>* child;
-
 	mFont = NULL;
 	mIsStatic = 1;
 	mVarChanged = 0;
@@ -38,67 +35,30 @@ GUIText::GUIText(xml_node<>* node)
 	maxWidth = 0;
 	charSkip = 0;
 	isHighlighted = false;
-	hasHighlightColor = false;
 
 	if (!node)
 		return;
 
-	// Initialize color to solid black
-	memset(&mColor, 0, sizeof(COLOR));
-	mColor.alpha = 255;
-	memset(&mHighlightColor, 0, sizeof(COLOR));
-	mHighlightColor.alpha = 255;
-
-	attr = node->first_attribute("color");
-	if (attr)
-	{
-		std::string color = attr->value();
-		ConvertStrToColor(color, &mColor);
-	}
-	attr = node->first_attribute("highlightcolor");
-	if (attr)
-	{
-		std::string color = attr->value();
-		ConvertStrToColor(color, &mHighlightColor);
-		hasHighlightColor = true;
-	}
+	// Load colors
+	mColor = LoadAttrColor(node, "color", COLOR(0,0,0,255));
+	mHighlightColor = LoadAttrColor(node, "highlightcolor", mColor);
 
 	// Load the font, and possibly override the color
-	child = node->first_node("font");
-	if (child)
-	{
-		attr = child->first_attribute("resource");
-		if (attr)
-			mFont = PageManager::FindResource(attr->value());
-
-		attr = child->first_attribute("color");
-		if (attr)
-		{
-			std::string color = attr->value();
-			ConvertStrToColor(color, &mColor);
-		}
-
-		attr = child->first_attribute("highlightcolor");
-		if (attr)
-		{
-			std::string color = attr->value();
-			ConvertStrToColor(color, &mHighlightColor);
-			hasHighlightColor = true;
-		}
-	}
+	mFont = LoadAttrFont(FindNode(node, "font"), "resource");
+	mColor = LoadAttrColor(FindNode(node, "font"), "color", mColor);
+	mHighlightColor = LoadAttrColor(FindNode(node, "font"), "highlightcolor", mColor);
 
 	// Load the placement
-	LoadPlacement(node->first_node("placement"), &mRenderX, &mRenderY, &mRenderW, &mRenderH, &mPlacement);
+	LoadPlacement(FindNode(node, "placement"), &mRenderX, &mRenderY, &mRenderW, &mRenderH, &mPlacement);
 
-	child = node->first_node("text");
+	xml_node<>* child = FindNode(node, "text");
 	if (child)  mText = child->value();
 
 	// Simple way to check for static state
-	mLastValue = parseText();
+	mLastValue = gui_parse_text(mText);
 	if (mLastValue != mText)   mIsStatic = 0;
 
-	mFontHeight = gr_getMaxFontHeight(mFont ? mFont->GetResource() : NULL);
-	return;
+	mFontHeight = mFont->GetHeight();
 }
 
 int GUIText::Render(void)
@@ -107,13 +67,11 @@ int GUIText::Render(void)
 		return 0;
 
 	void* fontResource = NULL;
-	string displayValue;
-
 	if (mFont)
 		fontResource = mFont->GetResource();
 
-	mLastValue = parseText();
-	displayValue = mLastValue;
+	mLastValue = gui_parse_text(mText);
+	string displayValue = mLastValue;
 
 	if (charSkip)
 		displayValue.erase(0, charSkip);
@@ -138,7 +96,7 @@ int GUIText::Render(void)
 			y -= mFontHeight;
 	}
 
-	if (hasHighlightColor && isHighlighted)
+	if (isHighlighted)
 		gr_color(mHighlightColor.red, mHighlightColor.green, mHighlightColor.blue, mHighlightColor.alpha);
 	else
 		gr_color(mColor.red, mColor.green, mColor.blue, mColor.alpha);
@@ -168,7 +126,7 @@ int GUIText::Update(void)
 	if (mIsStatic || !mVarChanged)
 		return 0;
 
-	std::string newValue = parseText();
+	std::string newValue = gui_parse_text(mText);
 	if (mLastValue == newValue)
 		return 0;
 	else
@@ -184,42 +142,9 @@ int GUIText::GetCurrentBounds(int& w, int& h)
 		fontResource = mFont->GetResource();
 
 	h = mFontHeight;
-	mLastValue = parseText();
+	mLastValue = gui_parse_text(mText);
 	w = gr_measureEx(mLastValue.c_str(), fontResource);
 	return 0;
-}
-
-std::string GUIText::parseText(void)
-{
-	static int counter = 0;
-	std::string str = mText;
-	size_t pos = 0;
-	size_t next = 0, end = 0;
-
-	while (1)
-	{
-		next = str.find('%', pos);
-		if (next == std::string::npos) return str;
-		end = str.find('%', next + 1);
-		if (end == std::string::npos) return str;
-
-		// We have a block of data
-		std::string var = str.substr(next + 1, (end - next) - 1);
-		str.erase(next, (end - next) + 1);
-
-		if (next + 1 == end)
-		{
-			str.insert(next, 1, '%');
-		}
-		else
-		{
-			std::string value;
-			if (DataManager::GetValue(var, value) == 0)
-				str.insert(next, value);
-		}
-
-		pos = next + 1;
-	}
 }
 
 int GUIText::NotifyVarChange(const std::string& varName, const std::string& value)

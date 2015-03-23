@@ -54,7 +54,8 @@ LOCAL_SRC_FILES += \
 
 LOCAL_SRC_FILES += \
     multirom.cpp \
-    mrominstaller.cpp
+    mrominstaller.cpp \
+    multiromedify.cpp
 
 ifneq ($(TARGET_RECOVERY_REBOOT_SRC),)
   LOCAL_SRC_FILES += $(TARGET_RECOVERY_REBOOT_SRC)
@@ -343,6 +344,7 @@ else
     LOCAL_SRC_FILES += ../../$(MR_DEVICE_RECOVERY_HOOKS)
 endif
 endif
+LOCAL_CFLAGS += -DPLATFORM_SDK_VERSION=$(PLATFORM_SDK_VERSION)
 
 LOCAL_ADDITIONAL_DEPENDENCIES := \
     dump_image \
@@ -360,8 +362,19 @@ LOCAL_ADDITIONAL_DEPENDENCIES := \
     fsck_msdos_symlink \
     mkdosfs
 
+# MultiROM additions
+LOCAL_ADDITIONAL_DEPENDENCIES += \
+    zip \
+    gnutar \
+    lz4 \
+    ntfs-3g \
+
 ifneq ($(TARGET_ARCH), arm64)
-    LOCAL_LDFLAGS += -Wl,-dynamic-linker,/sbin/linker
+    ifneq ($(TARGET_ARCH), x86_64)
+        LOCAL_LDFLAGS += -Wl,-dynamic-linker,/sbin/linker
+    else
+        LOCAL_LDFLAGS += -Wl,-dynamic-linker,/sbin/linker64
+    endif
 else
     LOCAL_LDFLAGS += -Wl,-dynamic-linker,/sbin/linker64
 endif

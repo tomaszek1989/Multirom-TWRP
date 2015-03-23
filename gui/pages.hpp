@@ -17,12 +17,15 @@ enum TOUCH_STATE {
 	TOUCH_REPEAT = 4
 };
 
-typedef struct {
+struct COLOR {
 	unsigned char red;
 	unsigned char green;
 	unsigned char blue;
 	unsigned char alpha;
-} COLOR;
+	COLOR() : red(0), green(0), blue(0), alpha(0) {}
+	COLOR(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255)
+		: red(r), green(g), blue(b), alpha(a) {}
+};
 
 // Utility Functions
 int ConvertStrToColor(std::string str, COLOR* color);
@@ -87,7 +90,7 @@ public:
 	int SetPage(std::string page);
 	std::string GetCurrentPage() const;
 	int SetOverlay(Page* page);
-	Resource* FindResource(std::string name);
+	const ResourceManager* GetResources();
 
 	// Helper routine for identifing if we're the current page
 	int IsCurrentPage(Page* page);
@@ -100,6 +103,8 @@ public:
 	int NotifyKeyboard(int key);
 	int SetKeyBoardFocus(int inFocus);
 	int NotifyVarChange(std::string varName, std::string value);
+
+	std::vector<xml_node<>*> styles;
 
 protected:
 	int LoadPages(xml_node<>* pages);
@@ -129,8 +134,7 @@ public:
 	static int ChangePage(std::string name);
 	static std::string GetCurrentPage();
 	static int ChangeOverlay(std::string name);
-	static Resource* FindResource(std::string name);
-	static Resource* FindResource(std::string package, std::string name);
+	static const ResourceManager* GetResources();
 
 	// Used for console-only mode
 	static int SwitchToConsole(void);
@@ -152,6 +156,8 @@ public:
 	static void LoadCursorData(xml_node<>* node);
 
 	static HardwareKeyboard *GetHardwareKeyboard();
+
+	static xml_node<>* FindStyle(std::string name);
 
 protected:
 	static PageSet* FindPackage(std::string name);

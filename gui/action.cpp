@@ -267,13 +267,14 @@ GUIAction::GUIAction(xml_node<>* node)
 		ADD_ACTION(multirom_execute_swap);
 		ADD_ACTION(multirom_set_fw);
 		ADD_ACTION(multirom_remove_fw);
+		ADD_ACTION(multirom_restorecon);
 		ADD_ACTION(system_image_upgrader);
 	}
 
 	// First, get the action
-	actions = node->first_node("actions");
-	if (actions)	child = actions->first_node("action");
-	else			child = node->first_node("action");
+	actions = FindNode(node, "actions");
+	if (actions)	child = FindNode(actions, "action");
+	else			child = FindNode(node, "action");
 
 	if (!child) return;
 
@@ -292,7 +293,7 @@ GUIAction::GUIAction(xml_node<>* node)
 	}
 
 	// Now, let's get either the key or region
-	child = node->first_node("touch");
+	child = FindNode(node, "touch");
 	if (child)
 	{
 		attr = child->first_attribute("key");
@@ -1356,6 +1357,10 @@ int GUIAction::terminalcommand(std::string arg)
 	if (simulate) {
 		simulate_progress_bar();
 		operation_end(op_status);
+	} else if (arg == "exit") {
+		LOGINFO("Exiting terminal\n");
+		operation_end(op_status);
+		page("main");
 	} else {
 		command = "cd \"" + cmdpath + "\" && " + arg + " 2>&1";;
 		LOGINFO("Actual command is: '%s'\n", command.c_str());
@@ -1391,8 +1396,7 @@ int GUIAction::terminalcommand(std::string arg)
 				} else {
 					// Try to read output
 					memset(line, 0, sizeof(line));
-					bytes_read = read(fd, line, sizeof(line));
-					if (bytes_read > 0)
+					if(fgets(line, sizeof(line), fp) != NULL)
 						gui_print("%s", line); // Display output
 					else
 						keep_going = 0; // Done executing
@@ -2290,7 +2294,7 @@ int GUIAction::multirom_sideload(std::string arg)
 			gui_print("You need adb 1.0.32 or newer to sideload to this device.\n");
 	} else {
 		DataManager::SetValue("tw_filename", FUSE_SIDELOAD_HOST_PATHNAME);
-		DataManager::SetValue("tw_mrom_sideloaded", FUSE_SIDELOAD_HOST_PATHNAME);
+		DataManager::SetValue("tw_mrom_sideloaded", 1);
 
 		if(DataManager::GetStrValue("tw_back") == "multirom_add") {
 			ret = multirom_add_rom("");
@@ -2487,6 +2491,14 @@ int GUIAction::multirom_remove_fw(std::string arg)
 	int res = remove(dst.c_str()) >= 0 ? 0 : 1;
 	DataManager::SetValue("tw_multirom_has_fw_image", int(access(dst.c_str(), F_OK) >= 0));
 
+	operation_end(res);
+	return 0;
+}
+
+int GUIAction::multirom_restorecon(std::string arg)
+{
+	operation_start("restorecon");
+	int res = MultiROM::restorecon(DataManager::GetStrValue("tw_multirom_rom_name")) ? 0 : -1;
 	operation_end(res);
 	return 0;
 }

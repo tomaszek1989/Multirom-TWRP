@@ -314,6 +314,7 @@ bool TWPartition::Process_Fstab_Line(string Line, bool Display_Error) {
 						Current_File_System = "emmc";
 						Setup_Image(Display_Error);
 						DataManager::SetValue(TW_IS_ENCRYPTED, 1);
+						DataManager::SetValue(TW_CRYPTO_PWTYPE, cryptfs_get_password_type());
 						DataManager::SetValue(TW_CRYPTO_PASSWORD, "");
 						DataManager::SetValue("tw_crypto_display", "");
 					} else {
@@ -1468,7 +1469,7 @@ bool TWPartition::Wipe_Encryption() {
 	if (Is_Decrypted) {
 		if (!UnMount(true))
 			return false;
-		if (delete_crypto_blk_dev("userdata") != 0) {
+		if (delete_crypto_blk_dev((char*)("userdata")) != 0) {
 			LOGERR("Error deleting crypto block device, continuing anyway.\n");
 		}
 	}

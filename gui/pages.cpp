@@ -70,7 +70,7 @@ int ConvertStrToColor(std::string str, COLOR* color)
 	DataManager::GetValue(str, str);
 
 	// Look for some defaults
-	if (str == "black")			return 0;
+	if (str == "black")		return 0;
 	else if (str == "white")	{ color->red = color->green = color->blue = 255; return 0; }
 	else if (str == "red")		{ color->red = 255; return 0; }
 	else if (str == "green")	{ color->green = 255; return 0; }
@@ -103,52 +103,151 @@ int ConvertStrToColor(std::string str, COLOR* color)
 }
 
 // Helper APIs
+xml_node<>* FindNode(xml_node<>* parent, const char* nodename, int depth /* = 0 */)
+{
+	if (!parent)
+		return NULL;
+
+	xml_node<>* child = parent->first_node(nodename);
+	if (child)
+		return child;
+
+	if (depth == 10) {
+		LOGERR("Too many style loops detected.\n");
+		return NULL;
+	}
+
+	xml_node<>* style = parent->first_node("style");
+	if (style) {
+		while (style) {
+			if (!style->first_attribute("name")) {
+				LOGERR("No name given for style.\n");
+				continue;
+			} else {
+				std::string name = style->first_attribute("name")->value();
+				xml_node<>* node = PageManager::FindStyle(name);
+
+				if (node) {
+					// We found the style that was named
+					xml_node<>* stylenode = FindNode(node, nodename, depth + 1);
+					if (stylenode)
+						return stylenode;
+				}
+			}
+			style = style->next_sibling("style");
+		}
+	} else {
+		// Search for stylename in the parent node <object type="foo" stylename="foo2">
+		xml_attribute<>* attr = parent->first_attribute("style");
+		// If no style is found anywhere else and the node wasn't found in the object itself
+		// as a special case we will search for a style that uses the same style name as the
+		// object type, so <object type="button"> would search for a style named "button"
+		if (!attr)
+			attr = parent->first_attribute("type");
+		if (attr) {
+			xml_node<>* node = PageManager::FindStyle(attr->value());
+			if (node) {
+				xml_node<>* stylenode = FindNode(node, nodename, depth + 1);
+				if (stylenode)
+					return stylenode;
+			}
+		}
+	}
+	return NULL;
+}
+
+std::string LoadAttrString(xml_node<>* element, const char* attrname, const char* defaultvalue)
+{
+	if (!element)
+		return defaultvalue;
+
+	xml_attribute<>* attr = element->first_attribute(attrname);
+	return attr ? attr->value() : defaultvalue;
+}
+
+int LoadAttrInt(xml_node<>* element, const char* attrname, int defaultvalue)
+{
+	string value = LoadAttrString(element, attrname);
+	// resolve variables
+	DataManager::GetValue(value, value);
+	return value.empty() ? defaultvalue : atoi(value.c_str());
+}
+
+int LoadAttrIntScaleX(xml_node<>* element, const char* attrname, int defaultvalue)
+{
+	return scale_theme_x(LoadAttrInt(element, attrname, defaultvalue));
+}
+
+int LoadAttrIntScaleY(xml_node<>* element, const char* attrname, int defaultvalue)
+{
+	return scale_theme_y(LoadAttrInt(element, attrname, defaultvalue));
+}
+
+COLOR LoadAttrColor(xml_node<>* element, const char* attrname, bool* found_color, COLOR defaultvalue)
+{
+	string value = LoadAttrString(element, attrname);
+	*found_color = !value.empty();
+	// resolve variables
+	DataManager::GetValue(value, value);
+	COLOR ret = defaultvalue;
+	if (ConvertStrToColor(value, &ret) == 0)
+		return ret;
+	else
+		return defaultvalue;
+}
+
+COLOR LoadAttrColor(xml_node<>* element, const char* attrname, COLOR defaultvalue)
+{
+	bool found_color = false;
+	return LoadAttrColor(element, attrname, &found_color, defaultvalue);
+}
+
+FontResource* LoadAttrFont(xml_node<>* element, const char* attrname)
+{
+	std::string name = LoadAttrString(element, attrname, "");
+	if (name.empty())
+		return NULL;
+	else
+		return PageManager::GetResources()->FindFont(name);
+}
+
+ImageResource* LoadAttrImage(xml_node<>* element, const char* attrname)
+{
+	std::string name = LoadAttrString(element, attrname, "");
+	if (name.empty())
+		return NULL;
+	else
+		return PageManager::GetResources()->FindImage(name);
+}
+
+AnimationResource* LoadAttrAnimation(xml_node<>* element, const char* attrname)
+{
+	std::string name = LoadAttrString(element, attrname, "");
+	if (name.empty())
+		return NULL;
+	else
+		return PageManager::GetResources()->FindAnimation(name);
+}
+
 bool LoadPlacement(xml_node<>* node, int* x, int* y, int* w /* = NULL */, int* h /* = NULL */, RenderObject::Placement* placement /* = NULL */)
 {
 	if (!node)
 		return false;
 
-	std::string value;
 	if (node->first_attribute("x"))
-	{
-		value = node->first_attribute("x")->value();
-		DataManager::GetValue(value, value);
-		*x = atol(value.c_str());
-		*x = scale_theme_x(*x);
-		*x += tw_x_offset;
-	}
+		*x = LoadAttrIntScaleX(node, "x") + tw_x_offset;
 
 	if (node->first_attribute("y"))
-	{
-		value = node->first_attribute("y")->value();
-		DataManager::GetValue(value, value);
-		*y = atol(value.c_str());
-		*y = scale_theme_y(*y);
-		*y += tw_y_offset;
-	}
+		*y = LoadAttrIntScaleY(node, "y") + tw_y_offset;
 
 	if (w && node->first_attribute("w"))
-	{
-		value = node->first_attribute("w")->value();
-		DataManager::GetValue(value, value);
-		*w = atol(value.c_str());
-		*w = scale_theme_x(*w);
-	}
+		*w = LoadAttrIntScaleX(node, "w");
 
 	if (h && node->first_attribute("h"))
-	{
-		value = node->first_attribute("h")->value();
-		DataManager::GetValue(value, value);
-		*h = atol(value.c_str());
-		*h = scale_theme_y(*h);
-	}
+		*h = LoadAttrIntScaleY(node, "h");
 
 	if (placement && node->first_attribute("placement"))
-	{
-		value = node->first_attribute("placement")->value();
-		DataManager::GetValue(value, value);
-		*placement = (RenderObject::Placement) atol(value.c_str());
-	}
+		*placement = (RenderObject::Placement) LoadAttrInt(node, "placement");
 
 	return true;
 }
@@ -342,6 +441,13 @@ bool Page::ProcessNode(xml_node<>* page, std::vector<xml_node<>*> *templates /* 
 		else if (type == "partitionlist")
 		{
 			GUIPartitionList* element = new GUIPartitionList(child);
+			mObjects.push_back(element);
+			mRenders.push_back(element);
+			mActions.push_back(element);
+		}
+		else if (type == "patternpassword")
+		{
+			GUIPatternPassword* element = new GUIPatternPassword(child);
 			mObjects.push_back(element);
 			mRenders.push_back(element);
 			mActions.push_back(element);
@@ -551,7 +657,7 @@ int Page::NotifyVarChange(std::string varName, std::string value)
 
 PageSet::PageSet(char* xmlFile)
 {
-	mResources = NULL;
+	mResources = new ResourceManager;
 	mCurrentPage = NULL;
 	mOverlayPage = NULL;
 
@@ -583,8 +689,7 @@ int PageSet::Load(ZipArchive* package)
 	xml_node<>* parent;
 	xml_node<>* child;
 	xml_node<>* xmltemplate;
-	xml_node<>* blank_templates;
-	int pages_loaded = -1, ret;
+	xml_node<>* xmlstyle;
 
 	parent = mDoc.first_node("recovery");
 	if (!parent)
@@ -645,7 +750,7 @@ int PageSet::Load(ZipArchive* package)
 	LOGINFO("Loading resources...\n");
 	child = parent->first_node("resources");
 	if (child)
-		mResources = new ResourceManager(child, package);
+		mResources->LoadResources(child, package);
 
 	LOGINFO("Loading variables...\n");
 	child = parent->first_node("variables");
@@ -662,6 +767,11 @@ int PageSet::Load(ZipArchive* package)
 	xmltemplate = parent->first_node("templates");
 	if (xmltemplate)
 		templates.push_back(xmltemplate);
+
+	// Load styles if present
+	xmlstyle = parent->first_node("styles");
+	if (xmlstyle)
+		styles.push_back(xmlstyle);
 
 	child = parent->first_node("pages");
 	if (child) {
@@ -682,6 +792,7 @@ int PageSet::CheckInclude(ZipArchive* package, xml_document<> *parentDoc)
 	xml_node<>* parent;
 	xml_node<>* child;
 	xml_node<>* xmltemplate;
+	xml_node<>* xmlstyle;
 	long len;
 	char* xmlFile = NULL;
 	string filename;
@@ -785,6 +896,11 @@ int PageSet::CheckInclude(ZipArchive* package, xml_document<> *parentDoc)
 		if (xmltemplate)
 			templates.push_back(xmltemplate);
 
+		// Load styles if present
+		xmlstyle = parent->first_node("styles");
+		if (xmlstyle)
+			styles.push_back(xmlstyle);
+
 		child = parent->first_node("pages");
 		if (child && LoadPages(child))
 		{
@@ -840,9 +956,9 @@ int PageSet::SetOverlay(Page* page)
 	return 0;
 }
 
-Resource* PageSet::FindResource(std::string name)
+const ResourceManager* PageSet::GetResources()
 {
-	return mResources ? mResources->FindResource(name) : NULL;
+	return mResources;
 }
 
 Page* PageSet::FindPage(std::string name)
@@ -1215,17 +1331,9 @@ int PageManager::ChangeOverlay(std::string name)
 	}
 }
 
-Resource* PageManager::FindResource(std::string name)
+const ResourceManager* PageManager::GetResources()
 {
-	return (mCurrentSet ? mCurrentSet->FindResource(name) : NULL);
-}
-
-Resource* PageManager::FindResource(std::string package, std::string name)
-{
-	PageSet* tmp;
-
-	tmp = FindPackage(name);
-	return (tmp ? tmp->FindResource(name) : NULL);
+	return (mCurrentSet ? mCurrentSet->GetResources() : NULL);
 }
 
 int PageManager::SwitchToConsole(void)
@@ -1264,6 +1372,23 @@ HardwareKeyboard *PageManager::GetHardwareKeyboard()
 	if(!mHardwareKeyboard)
 		mHardwareKeyboard = new HardwareKeyboard();
 	return mHardwareKeyboard;
+}
+
+xml_node<>* PageManager::FindStyle(std::string name)
+{
+	for (std::vector<xml_node<>*>::iterator itr = mCurrentSet->styles.begin(); itr != mCurrentSet->styles.end(); itr++) {
+		xml_node<>* node = (*itr)->first_node("style");
+
+		while (node) {
+			if (!node->first_attribute("name"))
+				continue;
+
+			if (name == node->first_attribute("name")->value())
+				return node;
+			node = node->next_sibling("style");
+		}
+	}
+	return NULL;
 }
 
 MouseCursor *PageManager::GetMouseCursor()
